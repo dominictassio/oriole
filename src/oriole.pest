@@ -1,0 +1,153 @@
+start = { SOI ~ chunk ~ EOI }
+
+chunk = { block }
+
+block = { _stat* ~ (break_stat | return_stat)? }
+
+_stat = _{
+    ";"
+  | call_stat
+  | do_stat
+  | for_stat
+  | func_stat
+  | if_stat
+  | let_stat
+  | match_stat
+  | type_stat
+  | while_stat
+}
+
+call_stat = { base_expr ~ (access | call | method)+ }
+do_stat   = { "do" ~ block ~ "end" }
+for_stat  = { "for" ~ pat ~ "in" ~ expr ~ "do" ~ block ~ "end" }
+
+func_stat = { "function" ~ path ~ (":" ~ name)? ~ func_body }
+func_body = { "(" ~ params? ~ ")" ~ ("->" ~ type)? ~ ("=>" ~ expr | block ~ "end") }
+params    = { param ~ ("," ~ param)* ~ ","? }
+param     = { pat ~ ":" ~ type }
+
+if_stat  = { "if" ~ expr ~ "then" ~ block ~ ("elsif" ~ expr ~ "then")* ~ ("else" ~ block)? ~ "end" }
+let_stat = { "let" ~ pats ~ "=" ~ exprs }
+
+match_stat = { "match" ~ exprs ~ "with" ~ match_arms ~ "end" }
+match_arms = { match_arm* ~ arm_last? }
+match_arm  = { arm_do | arm_expr }
+arm_do     = { match_pats ~ "do" ~ block ~ "end" }
+arm_expr   = { match_pats ~ "=>" ~ expr ~ "," }
+arm_last   = { match_pats ~ "=>" ~ expr }
+match_pats = { "|"? ~ pats ~ ("|" ~ pats)* }
+
+type_stat   = { "type" ~ name ~ "=" ~ type }
+while_stat  = { "while" ~ expr ~ "do" ~ block ~ "end" }
+break_stat  = { "break" }
+return_stat = { "return" ~ exprs? }
+
+exprs = { expr ~ ("," ~ expr)* ~ ","? }
+expr  = { _expr_prefix? ~ base_expr ~ _expr_postfix? ~ (_expr_infix ~ _expr_prefix? ~ base_expr ~ _expr_postfix?)* }
+
+_expr_prefix = _{ logical_not | unary }
+logical_not  =  { "not" }
+unary        =  { "+" | "-" | "!" | "~" }
+
+_expr_infix    = _{ exponentiation | multiplicative | additive | bitwise_shift | bitwise_and | bitwise_xor | bitwise_or | member | relational | equality | logical_and | logical_or }
+exponentiation =  { "**" }
+multiplicative =  { "*" | "/" | "%" }
+additive       =  { "+" | "-" }
+bitwise_shift  =  { "<<" | ">>" | ">>>" }
+bitwise_and    =  { "&" }
+bitwise_xor    =  { "^" }
+bitwise_or     =  { "|" }
+member         =  { "not"? ~ "in" }
+relational     =  { ">=" | ">" | "<=" | "<" }
+equality       =  { "==" | "!=" }
+logical_and    =  { "and" | "&&" }
+logical_or     =  { "or" | "||" | "??" }
+
+_expr_postfix = _{ access | as_cast | call | is_check | method }
+access        =  { "?"? ~ "." ~ name }
+as_cast       =  { "as" ~ type }
+call          =  { "?"? ~ base_expr }
+is_check      =  { "is" ~ "not"? ~ type }
+method        =  { ":" ~ name ~ call }
+
+base_expr = { char | list | name | numer | record | string | tuple }
+
+char       = ${ "'" ~ char_inner ~ "'" }
+char_inner = @{ (!("'" | "\\" | "\n" | "\r") ~ ANY | Escape) }
+
+Escape = @{
+    "\\" ~ ("'" | "\"" | "?" | "\\" | "a" | "b" | "f" | "n" | "r" | "t" | "v")
+  | "\\" ~ ASCII_DIGIT{1, 3}
+  | "\\x" ~ HEX_DIGIT{2}
+  | "\\u" ~ HEX_DIGIT{4}
+}
+
+list = { "[" ~ exprs ~ "]" }
+
+path = { name ~ ("." ~ name)* }
+
+name       = ${ (ASCII_ALPHA | "_" ~ ASCII_ALPHANUMERIC) ~ (ASCII_ALPHANUMERIC | "_" | "'")* | "`" ~ name_inner ~ "`" }
+name_inner = @{ (!("`" | "\\" | "\n" | "\r") ~ ANY | Escape)* }
+
+numer = {
+    int
+  | hex_int
+  | float
+  | hex_float
+}
+
+int     = @{ ASCII_DIGIT ~ (ASCII_DIGIT | "_")* }
+hex_int = @{ ^"0x" ~ HEX_DIGIT ~ (HEX_DIGIT | "_")* }
+
+float = @{
+    ASCII_DIGIT+ ~ "." ~ ASCII_DIGIT* ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)
+  | "." ~ ASCII_DIGIT+ ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)
+  | ASCII_DIGIT+ ~ (^"e" ~ ("+" | "-")? ~ ASCII_DIGIT+)
+}
+
+hex_float = @{
+    ^"0x" ~ HEX_DIGIT+ ~ "." ~ HEX_DIGIT* ~ (^"p" ~ ("+" | "-")? ~ ASCII_DIGIT+)
+  | ^"0x" ~ "." ~ HEX_DIGIT+ ~ (^"p" ~ ("+" | "-")? ~ ASCII_DIGIT+)
+  | ^"0x" ~ HEX_DIGIT+ ~ (^"p" ~ ("+" | "-")? ~ ASCII_DIGIT+)
+}
+
+record = { "{" ~ fields? ~ ","? ~ "}" }
+fields = { field ~ ("," ~ field)* }
+field  = { name ~ "=" ~ expr }
+
+string       = ${ "\"" ~ string_inner ~ "\"" }
+string_inner = @{ (!("\"" | "\\" | "\n" | "\r") ~ ANY | Escape)* }
+
+tuple = { "(" ~ exprs? ~ ")" }
+
+pats       = { pat ~ ("," ~ pat)* ~ ","? }
+pat        = { ctor_pat | list_pat | path | record_pat | tuple_pat | wild_pat }
+ctor_pat   = { path ~ (record_pat | tuple_pat) }
+list_pat   = { "[" ~ pats? ~ "]" }
+record_pat = { "{" ~ field_pats ~ "}" }
+field_pats = { field_pat ~ ("," ~ field_pat)* }
+field_pat  = { name ~ ("=" ~ pat)? }
+tuple_pat  = { "(" ~ pat ~ "," ~ pats? ~ ")" }
+wild_pat   = { "_" }
+
+types = { type ~ ("," ~ type)* ~ ","? }
+type  = { _type_prefix? ~ base_type ~ _type_postfix? ~ (_type_infix ~ _type_prefix? ~ base_type ~ _type_postfix?)* }
+
+_type_prefix = _{ forall | rec }
+forall       =  { ("forall" | "∀") ~ name ~ (":" ~ type)? ~ "." }
+rec          =  { ("rec" | "μ") ~ name ~ (":" ~ type)? ~ "." }
+
+_type_infix    = _{ arrow_type | intersect_type | union_type }
+arrow_type     =  { "->" }
+intersect_type =  { "&" }
+union_type     =  { "|" }
+
+_type_postfix = _{ "" }
+
+base_type = { list_type | path | record_type | tuple_type }
+
+list_type   = { "[" ~ type ~ "]" }
+record_type = { "{" ~ field_types? ~ "}" }
+field_types = { field_type ~ ("," ~ field_type)* ~ ","? }
+field_type  = { name ~ ":" ~ type }
+tuple_type  = { "(" ~ types? ~ ")" }
